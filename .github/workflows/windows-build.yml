@@ -52,7 +52,7 @@ jobs:
           gcc -Wall -O2 \
             -I"${{ env.OPUS_PATH }}/include" \
             -L"${{ env.OPUS_PATH }}/.libs" \
-            main.c -o my_app.exe \
+            /loracall/loracall.c -o loracall.exe \
             -lopus -lwinmm -lole32 -lm
 
       # 6. Upload the finished .exe so you can download it
