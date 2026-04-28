@@ -1,4 +1,4 @@
-name: Build Opus and App
+name: Build Loracall (Static Windows)
 
 on:
   push:
@@ -11,12 +11,15 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      # 1. Get your code
       - name: Checkout project code
         uses: actions/checkout@v4
 
+      # 2. Get Opus source
       - name: Clone Opus Source
         run: git clone https://github.com/xiph/opus.git
 
+      # 3. Setup the build environment
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -29,34 +32,41 @@ jobs:
             automake
             libtool
 
+      # 4. Download miniaudio.h
       - name: Download miniaudio
         shell: msys2 {0}
         run: |
+          mkdir -p ./loracall
           curl -L https://raw.githubusercontent.com/mackron/miniaudio/master/miniaudio.h -o ./loracall/miniaudio.h
 
+      # 5. Build and "Install" Opus to a local folder
       - name: Build Opus Library
         shell: msys2 {0}
         run: |
           cd opus
           ./autogen.sh
-          ./configure --disable-shared --enable-static
+          ./configure --disable-shared --enable-static --prefix=$(pwd)/dist
           make -j$(nproc)
-          echo "OPUS_PATH=$(pwd)" >> $GITHUB_ENV
+          make install
+          # Export this path so the next step can find the organized files
+          echo "OPUS_DIST=$(pwd)/dist" >> $GITHUB_ENV
 
+      # 6. Compile the final static executable
       - name: Compile Main Application
         shell: msys2 {0}
         run: |
           gcc -Wall -O2 \
-            -I"${{ env.OPUS_PATH }}/include" \
+            -I"${{ env.OPUS_DIST }}/include" \
             -I"./loracall" \
-            -L"${{ env.OPUS_PATH }}/.libs" \
             ./loracall/loracall.c -o loracall.exe \
+            -L"${{ env.OPUS_DIST }}/lib" \
             -static \
             -lopus -lwinmm -lole32 -lm
 
+      # 7. Upload the standalone .exe
       - name: Upload Executable
         uses: actions/upload-artifact@v4
         with:
-          name: windows-binary
+          name: loracall-windows-x64
           path: loracall.exe
 
