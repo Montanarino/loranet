@@ -52,7 +52,7 @@ jobs:
           gcc -Wall -O2 \
             -I"${{ env.OPUS_PATH }}/include" \
             -L"${{ env.OPUS_PATH }}/.libs" \
-            /loracall/loracall.c -o loracall.exe \
+            ./loracall/loracall.c -o loracall.exe \
             -lopus -lwinmm -lole32 -lm
 
       # 6. Upload the finished .exe so you can download it
@@ -60,4 +60,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-binary
-          path: my_app.exe
+          path: loracall.exe
