@@ -11,15 +11,12 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 1. Pull your repository code
       - name: Checkout project code
         uses: actions/checkout@v4
 
-      # 2. Clone the Opus source code
       - name: Clone Opus Source
         run: git clone https://github.com/xiph/opus.git
 
-      # 3. Setup the MSYS2 environment
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -32,13 +29,11 @@ jobs:
             automake
             libtool
 
-      # 4. Download miniaudio.h (The missing dependency)
       - name: Download miniaudio
         shell: msys2 {0}
         run: |
           curl -L https://raw.githubusercontent.com/mackron/miniaudio/master/miniaudio.h -o ./loracall/miniaudio.h
 
-      # 5. Compile the Opus Library
       - name: Build Opus Library
         shell: msys2 {0}
         run: |
@@ -48,7 +43,6 @@ jobs:
           make -j$(nproc)
           echo "OPUS_PATH=$(pwd)" >> $GITHUB_ENV
 
-      # 6. Compile Main Application
       - name: Compile Main Application
         shell: msys2 {0}
         run: |
@@ -57,11 +51,12 @@ jobs:
             -I"./loracall" \
             -L"${{ env.OPUS_PATH }}/.libs" \
             ./loracall/loracall.c -o loracall.exe \
+            -static \
             -lopus -lwinmm -lole32 -lm
 
-      # 7. Upload the finished .exe
       - name: Upload Executable
         uses: actions/upload-artifact@v4
         with:
           name: windows-binary
           path: loracall.exe
+
