@@ -1,13 +1,25 @@
 name: Build Opus and App
-on: [push]
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
-      - name: Checkout code
+      # 1. Pull your repository code
+      - name: Checkout project code
         uses: actions/checkout@v4
 
+      # 2. Clone the Opus source code (Using standard runner git)
+      - name: Clone Opus Source
+        run: git clone https://github.com/xiph/opus.git
+
+      # 3. Setup the MSYS2 environment with necessary tools
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -20,29 +32,30 @@ jobs:
             automake
             libtool
 
+      # 4. Compile the Opus Library
       - name: Build Opus Library
         shell: msys2 {0}
         run: |
-          # You can either git clone or use a folder already in your repo
-          git clone https://github.com/xiph/opus.git
           cd opus
           ./autogen.sh
           ./configure --disable-shared --enable-static
           make -j$(nproc)
-          
-          # Set variables for the next step based on the build location
+          # Save the absolute path for the next step
           echo "OPUS_PATH=$(pwd)" >> $GITHUB_ENV
 
+      # 5. Compile your C file using the library we just built
       - name: Compile Main Application
         shell: msys2 {0}
         run: |
-          # Use the OPUS_PATH we saved in the previous step
+          # Note: Adjust main.c to your actual filename
+          # We point -I to the 'include' folder and -L to '.libs' where libopus.a lives
           gcc -Wall -O2 \
             -I"${{ env.OPUS_PATH }}/include" \
             -L"${{ env.OPUS_PATH }}/.libs" \
-            /loracall/loracall.c -o loracall.exe \
+            main.c -o my_app.exe \
             -lopus -lwinmm -lole32 -lm
 
+      # 6. Upload the finished .exe so you can download it
       - name: Upload Executable
         uses: actions/upload-artifact@v4
         with:
