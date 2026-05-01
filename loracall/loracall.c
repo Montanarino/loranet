@@ -420,7 +420,7 @@ static int lora_configure(App *ctx, float freq_mhz)
 static int at_exit(App *ctx)
 {
     ms_sleep(200);
-    at_cmd(ctx, "+++", null, 0);
+    at_cmd(ctx, "+++", NULL, 0);
     ms_sleep(100);
     return 0;
 }
