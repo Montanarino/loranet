@@ -1,0 +1,291 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.plan{padding:1rem 0;font-size:14px;color:var(--color-text-primary)}
+.header-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.dev-badge{border-radius:var(--border-radius-lg);padding:14px 16px;border:0.5px solid var(--color-border-tertiary)}
+.dev-a{background:#EEEDFE;border-color:#AFA9EC}
+.dev-b{background:#E1F5EE;border-color:#5DCAA5}
+.dev-a .name{color:#3C3489;font-weight:500;font-size:15px}
+.dev-b .name{color:#085041;font-weight:500;font-size:15px}
+.dev-a .role{color:#534AB7;font-size:12px;margin-top:2px}
+.dev-b .role{color:#0F6E56;font-size:12px;margin-top:2px}
+.phase{margin-bottom:20px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden}
+.phase-header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--color-background-secondary);border-bottom:0.5px solid var(--color-border-tertiary);cursor:pointer;user-select:none}
+.phase-num{font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px}
+.phase-a .phase-num{background:#CECBF6;color:#3C3489}
+.phase-b .phase-num{background:#9FE1CB;color:#085041}
+.phase-ab .phase-num{background:#D3D1C7;color:#444441}
+.phase-title{font-weight:500;font-size:14px;flex:1}
+.phase-duration{font-size:12px;color:var(--color-text-secondary)}
+.chevron{font-size:12px;color:var(--color-text-tertiary);transition:transform .2s}
+.phase-body{padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.phase-body.single{grid-template-columns:1fr}
+.task-col{}
+.col-label{font-size:11px;font-weight:500;margin-bottom:8px;padding:3px 8px;border-radius:4px;display:inline-block}
+.col-a .col-label{background:#EEEDFE;color:#534AB7}
+.col-b .col-label{background:#E1F5EE;color:#0F6E56}
+.col-shared .col-label{background:#F1EFE8;color:#5F5E5A}
+.task{border-radius:var(--border-radius-md);padding:8px 10px;margin-bottom:6px;border:0.5px solid var(--color-border-tertiary);background:var(--color-background-primary)}
+.task-title{font-size:13px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px}
+.task-desc{font-size:12px;color:var(--color-text-secondary);line-height:1.5}
+.task-files{margin-top:5px;display:flex;flex-wrap:wrap;gap:4px}
+.file-tag{font-size:11px;padding:1px 6px;border-radius:3px;font-family:var(--font-mono)}
+.file-a{background:#EEEDFE;color:#3C3489}
+.file-b{background:#E1F5EE;color:#085041}
+.file-s{background:#F1EFE8;color:#5F5E5A}
+.sync-bar{margin:6px 0;padding:5px 10px;border-radius:var(--border-radius-md);font-size:12px;background:var(--color-background-warning);color:var(--color-text-warning);border:0.5px solid var(--color-border-warning)}
+.dep-bar{margin:6px 0;padding:5px 10px;border-radius:var(--border-radius-md);font-size:12px;background:var(--color-background-danger);color:var(--color-text-danger);border:0.5px solid var(--color-border-danger)}
+</style>
+
+<div class="plan">
+<h2 class="sr-only">Piano di lavoro per due sviluppatori sul progetto LoRa Mesh</h2>
+
+<div class="header-row">
+  <div class="dev-badge dev-a">
+    <div class="name"><i class="ti ti-user" style="font-size:15px;vertical-align:-2px;margin-right:5px" aria-hidden="true"></i>Dev A</div>
+    <div class="role">Master firmware + Composer + OTA sender</div>
+  </div>
+  <div class="dev-badge dev-b">
+    <div class="name"><i class="ti ti-user" style="font-size:15px;vertical-align:-2px;margin-right:5px" aria-hidden="true"></i>Dev B</div>
+    <div class="role">Slave firmware + Servizi + OTA receiver</div>
+  </div>
+</div>
+
+<div class="sync-bar"><i class="ti ti-git-merge" style="font-size:14px;vertical-align:-2px;margin-right:5px" aria-hidden="true"></i><strong>Prima di tutto — insieme (1–2 ore):</strong> finalizzare lora_protocol.h e service_ids.h. Nessuno comincia il proprio codice finché questo non è congelato.</div>
+
+<div class="phase phase-ab">
+  <div class="phase-header">
+    <span class="phase-num">Fase 0</span>
+    <span class="phase-title">Setup e fondamenta condivise</span>
+    <span class="phase-duration">~ 1 giorno</span>
+  </div>
+  <div class="phase-body single">
+    <div class="task-col col-shared">
+      <div class="col-label">Entrambi</div>
+      <div class="task">
+        <div class="task-title">Protocollo LoRa definitivo</div>
+        <div class="task-desc">Congelare frame layout, tutti i MsgType, tutte le struct payload. Qualsiasi modifica futura deve essere discussa insieme perché rompe entrambi i firmware.</div>
+        <div class="task-files"><span class="file-s">shared/lora_protocol.h</span><span class="file-s">shared/service_ids.h</span></div>
+      </div>
+      <div class="task">
+        <div class="task-title">Repo e progetto PlatformIO</div>
+        <div class="task-desc">Creare repo Git con due cartelle /master e /slave, ciascuna con il proprio platformio.ini. Configurare librerie comuni (FreeRTOS è già nell'ESP32 core).</div>
+        <div class="task-files"><span class="file-s">master/platformio.ini</span><span class="file-s">slave/platformio.ini</span></div>
+      </div>
+      <div class="task">
+        <div class="task-title">Test fisico moduli LoRa</div>
+        <div class="task-desc">Verificare che entrambi i moduli rispondano agli AT commands (AT, AT+ADDRESS, AT+BAND). Documentare baud rate e comandi specifici del modello usato.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="phase phase-a" style="border-color:#AFA9EC">
+  <div class="phase-header">
+    <span class="phase-num">Fase 1 — Dev A</span>
+    <span class="phase-title">Master: LoRa manager + task structure</span>
+    <span class="phase-duration">~ 2 giorni</span>
+  </div>
+  <div class="phase-body single">
+    <div class="task-col col-a">
+      <div class="col-label">Dev A</div>
+      <div class="task">
+        <div class="task-title">LoRaManager completo</div>
+        <div class="task-desc">Completare sendFrame con retry loop. Implementare processRxByte con state machine (WAIT_MAGIC → HEADER → PAYLOAD → CRC). Testare encode/decode in loopback sulla stessa UART.</div>
+        <div class="task-files"><span class="file-a">master/src/lora_manager.h</span><span class="file-a">master/src/lora_manager.cpp</span></div>
+      </div>
+      <div class="task">
+        <div class="task-title">FreeRTOS task skeleton</div>
+        <div class="task-desc">Creare i 3 task: loraRxTask (Core 0, priorità 2), mainLogicTask (Core 0, priorità 1), consoleTask (Core 1, priorità 1). Inizializzare la QueueHandle per i frame e il Mutex per la registry. Verificare che i task partano senza crash.</div>
+        <div class="task-files"><span class="file-a">master/master.ino</span></div>
+      </div>
+      <div class="task">
+        <div class="task-title">SlaveRegistry base</div>
+        <div class="task-desc">Struttura SlaveNode con id, name, last_seen, is_repeater, hop_count, services[]. Funzioni: addSlave(), updateHeartbeat(), getSlaveById(), markOffline(). Il Mutex deve proteggere ogni accesso.</div>
+        <div class="task-files"><span class="file-a">master/src/slave_registry.h</span><span class="file-a">master/src/slave_registry.cpp</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="phase phase-b" style="border-color:#5DCAA5">
+  <div class="phase-header">
+    <span class="phase-num">Fase 1 — Dev B</span>
+    <span class="phase-title">Slave: boot + announce + service registry</span>
+    <span class="phase-duration">~ 2 giorni</span>
+  </div>
+  <div class="phase-body single">
+    <div class="task-col col-b">
+      <div class="col-label">Dev B</div>
+      <div class="task">
+        <div class="task-title">LoRaManager slave</div>
+        <div class="task-desc">Versione semplificata del manager (niente discovery attivo). Stessa state machine di parsing. Deve gestire MSG_ACK in uscita automaticamente per ogni frame ricevuto dal master.</div>
+        <div class="task-files"><span class="file-b">slave/lora_manager.h</span><span class="file-b">slave/lora_manager.cpp</span></div>
+      </div>
+      <div class="task">
+        <div class="task-title">Boot sequence + MSG_ANNOUNCE</div>
+        <div class="task-desc">All'avvio: invia MSG_ANNOUNCE con nome, lista servizi disponibili, flag relay. Riprova ogni 5 secondi finché non riceve MSG_ACK dal master. Dopo 3 tentativi falliti entra in modalità standalone.</div>
+        <div class="task-files"><span class="file-b">slave/slave.ino</span></div>
+      </div>
+      <div class="task">
+        <div class="task-title">ServiceRegistry</div>
+        <div class="task-desc">Array statico di ServiceDescriptor con service_id, name, active, init_fn, loop_fn, cmd_handler. Funzioni: registerService(), activateService(), dispatchCmd(). Il loop dello slave chiama loop_fn di ogni servizio attivo.</div>
+        <div class="task-files"><span class="file-b">slave/services/service_registry.h</span><span class="file-b">slave/services/service_registry.cpp</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sync-bar" style="margin-bottom:16px"><i class="ti ti-refresh" style="font-size:14px;vertical-align:-2px;margin-right:5px" aria-hidden="true"></i><strong>Sync punto 1:</strong> test di integrazione — master accende, slave accende, master riceve ANNOUNCE e stampa "slave_01 online" sulla console seriale.</div>
+
+<div class="phase phase-a" style="border-color:#AFA9EC">
+  <div class="phase-header">
+    <span class="phase-num">Fase 2 — Dev A</span>
+    <span class="phase-title">Master: console CLI + discovery</span>
+    <span class="phase-duration">~ 2 giorni</span>
+  </div>
+  <div class="phase-body single">
+    <div class="task-col col-a">
+      <div class="col-label">Dev A</div>
+      <div class="task">
+        <div class="task-title">Console seriale interattiva</div>
+        <div class="task-desc">Parser comandi su Serial: tokenizza input per spazi, dispatch a handler. Implementare: list (tabella slave), info &lt;id&gt; (dettagli + servizi), ping &lt;id&gt; (RTT), help. Output formattato con colonne fisse.</div>
+        <div class="task-files"><span class="file-a">master/src/console.h</span><span class="file-a">master/src/console.cpp</span></div>
+      </div>
+      <div class="task">
+        <div class="task-title">Discovery + heartbeat loop</div>
+        <div class="task-desc">mainLogicTask invia MSG_DISCOVERY_REQ in broadcast ogni DISCOVERY_INTERVAL_MS. Controlla last_seen di ogni slave: se scaduto di HEARTBEAT_TIMEOUT_MS lo marca OFFLINE e stampa avviso in console.</div>
+      </div>
+      <div class="task">
+        <div class="task-title">MSG_CMD sender</div>
+        <div class="task-desc">Comando console "run &lt;id&gt; &lt;svc&gt; &lt;cmd&gt; [args]" costruisce PayloadCmd e lo invia. Attende MSG_CMD_RESULT con timeout CMD_TIMEOUT_MS. Stampa risultato o errore.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="phase phase-b" style="border-color:#5DCAA5">
+  <div class="phase-header">
+    <span class="phase-num">Fase 2 — Dev B</span>
+    <span class="phase-title">Slave: primo servizio + CMD handler</span>
+    <span class="phase-duration">~ 2 giorni</span>
+  </div>
+  <div class="phase-body single">
+    <div class="task-col col-b">
+      <div class="col-label">Dev B</div>
+      <div class="task">
+        <div class="task-title">svc_sensor (DHT22 / ADC)</div>
+        <div class="task-desc">Implementare il primo servizio concreto. CMD 0x01 = read_all → risponde con JSON minimale {t:22.5,h:60}. CMD 0x02 = set_interval → cambia frequenza di campionamento. Registrarlo nella ServiceRegistry.</div>
+        <div class="task-files"><span class="file-b">slave/services/svc_sensor.h</span><span class="file-b">slave/services/svc_sensor.cpp</span></div>
+      </div>
+      <div class="task">
+        <div class="task-title">MSG_CMD dispatcher</div>
+        <div class="task-desc">Quando arriva MSG_CMD: estrarre service_id e cmd_id, chiamare dispatchCmd() della registry, costruire PayloadCmdResult con esito, inviare MSG_CMD_RESULT al master.</div>
+      </div>
+      <div class="task">
+        <div class="task-title">MSG_HEARTBEAT periodico</div>
+        <div class="task-desc">Task FreeRTOS separato che ogni 10 secondi invia uptime, RSSI dell'ultimo frame ricevuto, heap libero (ESP.getFreeHeap()), bitmask servizi attivi.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sync-bar" style="margin-bottom:16px"><i class="ti ti-refresh" style="font-size:14px;vertical-align:-2px;margin-right:5px" aria-hidden="true"></i><strong>Sync punto 2:</strong> dal master digitare "run 1 sensor read_all" e vedere la risposta temperatura/umidità in console. Testare "list" con heartbeat aggiornato.</div>
+
+<div class="phase phase-a" style="border-color:#AFA9EC">
+  <div class="phase-header">
+    <span class="phase-num">Fase 3 — Dev A</span>
+    <span class="phase-title">OTA sender + Module Composer</span>
+    <span class="phase-duration">~ 3 giorni</span>
+  </div>
+  <div class="phase-body single">
+    <div class="task-col col-a">
+      <div class="col-label">Dev A</div>
+      <div class="task">
+        <div class="task-title">OTA sender con ARQ</div>
+        <div class="task-desc">Aprire file dalla SPIFFS/SD, inviare MSG_OTA_START con size+CRC32. Loop: invia chunk → attende MSG_OTA_ACK con chunk_index corrispondente → in caso di timeout ritrasmette fino a ACK_RETRIES. Invia MSG_OTA_END. Stampa progress bar in console (% completato).</div>
+        <div class="task-files"><span class="file-a">master/src/ota_sender.h</span><span class="file-a">master/src/ota_sender.cpp</span></div>
+      </div>
+      <div class="task">
+        <div class="task-title">Module Composer — config mode</div>
+        <div class="task-desc">Comando console "compose &lt;id&gt;": mostra lista template disponibili, chiede parametri (pin, SSID, soglie), genera un buffer PayloadConfig con le coppie chiave/valore, lo serializza e lo passa all'OTA sender come OTA_TYPE_MODULE_SEL. Nessuna ricompilazione richiesta.</div>
+        <div class="task-files"><span class="file-a">master/src/composer/module_composer.h</span><span class="file-a">master/src/composer/module_composer.cpp</span></div>
+      </div>
+      <div class="task">
+        <div class="task-title">Template file sensors + network</div>
+        <div class="task-desc">Scrivere i file .tpl con placeholder {{PIN}}, {{SSID}}, {{INTERVAL_MS}}. Il code_generator fa una semplice sostituzione stringa. Creare almeno: dht22.tpl, adc_generic.tpl, http_server_simple.tpl.</div>
+        <div class="task-files"><span class="file-a">master/src/composer/templates/</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="phase phase-b" style="border-color:#5DCAA5">
+  <div class="phase-header">
+    <span class="phase-num">Fase 3 — Dev B</span>
+    <span class="phase-title">OTA receiver + svc_http + svc_relay</span>
+    <span class="phase-duration">~ 3 giorni</span>
+  </div>
+  <div class="phase-body single">
+    <div class="task-col col-b">
+      <div class="col-label">Dev B</div>
+      <div class="task">
+        <div class="task-title">OTA receiver su partizione ESP32</div>
+        <div class="task-desc">Gestire MSG_OTA_START: aprire la partizione OTA inattiva con esp_ota_begin(). Per ogni MSG_OTA_CHUNK: esp_ota_write() + inviare ACK_OTA_CHUNK_OK. Su MSG_OTA_END: verificare CRC32, chiamare esp_ota_end() + esp_ota_set_boot_partition() + esp_restart(). In caso di errore CRC inviare ACK_OTA_FAIL.</div>
+        <div class="task-files"><span class="file-b">slave/ota_receiver.h</span><span class="file-b">slave/ota_receiver.cpp</span></div>
+      </div>
+      <div class="task">
+        <div class="task-title">Gestione MSG_CONFIG</div>
+        <div class="task-desc">Ricevere PayloadConfig, iterare i ConfigParam, aggiornare i parametri del servizio target via una funzione setParam(key, value). Persistere in NVS (Preferences.h) in modo che sopravvivano al reboot. Inviare MSG_CONFIG_ACK.</div>
+      </div>
+      <div class="task">
+        <div class="task-title">svc_http con interfaccia web</div>
+        <div class="task-desc">WebServer minimale su porta 80 con una pagina HTML inline che mostra i valori dei sensori attivi aggiornati ogni 5 secondi via fetch(). Attivabile/disattivabile via CMD.</div>
+        <div class="task-files"><span class="file-b">slave/services/svc_http.h</span><span class="file-b">slave/services/svc_http.cpp</span></div>
+      </div>
+      <div class="task">
+        <div class="task-title">svc_relay (hop forwarding)</div>
+        <div class="task-desc">Se attivo, intercetta frame con dst != self_id e hop_count > 0: decrementa hop_count, setta relay_src = self_id, ritrasmette. Non ritrasmettere frame già visti (cache degli ultimi 8 seq recenti per evitare loop).</div>
+        <div class="task-files"><span class="file-b">slave/services/svc_relay.h</span><span class="file-b">slave/services/svc_relay.cpp</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sync-bar" style="margin-bottom:16px"><i class="ti ti-refresh" style="font-size:14px;vertical-align:-2px;margin-right:5px" aria-hidden="true"></i><strong>Sync punto 3:</strong> test OTA completo — master invia un file di config allo slave, slave applica, master riceve conferma. Testare relay con 3 nodi fisici.</div>
+
+<div class="phase phase-ab">
+  <div class="phase-header">
+    <span class="phase-num">Fase 4</span>
+    <span class="phase-title">Integrazione finale, test e hardening</span>
+    <span class="phase-duration">~ 2 giorni</span>
+  </div>
+  <div class="phase-body">
+    <div class="task-col col-a">
+      <div class="col-label">Dev A</div>
+      <div class="task">
+        <div class="task-title">Comandi OTA + composer in console</div>
+        <div class="task-desc">Collegare tutti i pezzi: compose → genera config → send_ota → progress → conferma. Aggiungere comando "set_repeater &lt;id&gt; on|off" e "monitor &lt;id&gt;" per stream output.</div>
+      </div>
+      <div class="task">
+        <div class="task-title">Stress test rete</div>
+        <div class="task-desc">Simulare 4+ slave contemporanei. Verificare che la registry non si corrompa con accessi concorrenti. Testare recovery dopo disconnect/reconnect slave.</div>
+      </div>
+    </div>
+    <div class="task-col col-b">
+      <div class="col-label">Dev B</div>
+      <div class="task">
+        <div class="task-title">Robustezza OTA receiver</div>
+        <div class="task-desc">Testare interruzione OTA a metà trasferimento: il firmware vecchio deve restare attivo (rollback automatico). Testare CRC errato: deve rifiutare e notificare il master senza brickarsi.</div>
+      </div>
+      <div class="task">
+        <div class="task-title">Test relay multi-hop</div>
+        <div class="task-desc">Verificare catena master → repeater → slave finale. Controllare che i frame non vengano duplicati e che hop_count funzioni come TTL.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dep-bar"><i class="ti ti-alert-triangle" style="font-size:14px;vertical-align:-2px;margin-right:5px" aria-hidden="true"></i><strong>Dipendenza critica:</strong> Dev B non può testare OTA receiver finché Dev A non ha OTA sender funzionante. Pianificare questo sync prima di Fase 3.</div>
+
+</div>

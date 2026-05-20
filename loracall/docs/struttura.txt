@@ -1,0 +1,32 @@
+lora_mesh/
+│
+├── shared/                         # codice incluso da entrambi i firmware
+│   ├── lora_protocol.h             # frame, payload structs, CRC16, encode/decode ✅
+│   └── service_ids.h               # enum ID servizi condivisi master↔slave
+│
+├── master/
+│   ├── master.ino  ★               # setup() + loop() + launch dei 3 task FreeRTOS
+│   ├── config.h    ✅               # pin, timing, dimensioni buffer
+│   └── src/
+│       ├── lora_manager.h/cpp  ✅   # AT init, TX/RX, parser frame, retry/ACK
+│       ├── slave_registry.h/cpp    # tabella slave, stato, heartbeat timeout
+│       ├── console.h/cpp           # task console seriale, parser comandi CLI
+│       ├── ota_sender.h/cpp        # chunking file, ARQ, progress tracking
+│       └── composer/
+│           ├── module_composer.h/cpp  # selezione template, risoluzione dipendenze
+│           ├── code_generator.h/cpp   # genera config/payload da inviare allo slave
+│           └── templates/
+│               ├── sensors/           # dht22.tpl, bme280.tpl, adc.tpl
+│               ├── network/           # http_server.tpl, mqtt_client.tpl
+│               └── output/            # serial_logger.tpl, oled.tpl
+│
+└── slave/
+    ├── slave.ino  ★                # setup() + loop() + launch task FreeRTOS
+    ├── config.h                    # ID nodo, pin LoRa, nome
+    ├── lora_manager.h/cpp          # versione slave (più leggera)
+    ├── ota_receiver.h/cpp          # riceve chunk, scrive partizione OTA, reboot
+    └── services/
+        ├── service_registry.h/cpp  # lista servizi attivi, dispatch comandi
+        ├── svc_sensor.h/cpp        # lettura sensori (DHT22, BME280, ADC)
+        ├── svc_http.h/cpp          # HTTP server con interfaccia web
+        └── svc_relay.h/cpp         # modalità repeater/hop forwarding
