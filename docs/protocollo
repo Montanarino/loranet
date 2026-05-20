@@ -1,0 +1,565 @@
+# LMP — LoRa Mesh Protocol
+### Specifica v1.0
+
+---
+
+## 1. Scopo e perimetro
+
+LMP è un protocollo applicativo a livello 4–7 che gira sopra un modulo LoRa configurato in **modalità trasparente** (raw byte UART). Il modulo radio si occupa di modulazione, spreading factor e checksum radio; LMP si occupa di indirizzamento, affidabilità, sessioni e semantica dei messaggi.
+
+LMP non è un protocollo mesh puro: la topologia è **stella con relay opzionale**. Il master è il centro; gli slave si registrano al master; uno slave può fare da relay estendendo la copertura di un ulteriore livello di hop.
+
+---
+
+## 2. Stack di comunicazione
+
+```
+┌────────────────────────────────────┐
+│  Applicazione (servizi, OTA, CLI)  │  ← LMP Application Layer
+├────────────────────────────────────┤
+│  LMP Frame Layer                   │  ← questo documento
+├────────────────────────────────────┤
+│  LoRa trasparente (byte stream)    │  ← gestito dal modulo HW
+├────────────────────────────────────┤
+│  LoRa PHY (SF, BW, CR, freq)       │  ← configurato via AT
+└────────────────────────────────────┘
+```
+
+---
+
+## 3. Indirizzamento
+
+| Valore  | Significato                         |
+|---------|-------------------------------------|
+| `0x00`  | Riservato al Master                 |
+| `0x01`–`0xFE` | Slave (assegnati staticamente in config.h) |
+| `0xFF`  | Broadcast (tutti i nodi ricevono)   |
+
+Gli indirizzi sono a **1 byte**. Non esiste DHCP: ogni slave ha un ID fisso programmato nel proprio `config.h`. Il master conosce tutti gli slave dopo il loro ANNOUNCE.
+
+---
+
+## 4. Frame
+
+### 4.1 Struttura
+
+```
+ 0       1       2       3       4       5       6       7
+ ┌───────┬───────┬───────┬───────┬───────────────┬───────────────┐
+ │ MAGIC │  DST  │  SRC  │  TYPE │   SEQ (LE16)  │  LEN (LE16)   │
+ └───────┴───────┴───────┴───────┴───────────────┴───────────────┘
+ 8                                              8+LEN
+ ┌───────────────────────────────────────────────┬───────────────┐
+ │              PAYLOAD (0–180 byte)             │  CRC16 (LE16) │
+ └───────────────────────────────────────────────┴───────────────┘
+```
+
+| Campo    | Byte | Tipo        | Descrizione |
+|----------|------|-------------|-------------|
+| MAGIC    | 1    | `uint8_t`   | Sempre `0xAB`. Usato per sincronizzazione stream. |
+| DST      | 1    | `uint8_t`   | Indirizzo destinatario. |
+| SRC      | 1    | `uint8_t`   | Indirizzo mittente. |
+| TYPE     | 1    | `MsgType`   | Tipo del messaggio (vedi §5). |
+| SEQ      | 2    | `uint16_t` LE | Numero di sequenza. Incrementato per ogni frame inviato. `0xFFFF` = non applicabile. |
+| LEN      | 2    | `uint16_t` LE | Lunghezza in byte del payload. Può essere 0. |
+| PAYLOAD  | 0–180| –           | Contenuto dipendente dal TYPE. |
+| CRC16    | 2    | `uint16_t` LE | CRC-16/CCITT-FALSE calcolato su MAGIC..PAYLOAD inclusi. |
+
+**Overhead fisso:** 10 byte.
+**Frame massimo:** 190 byte.
+**Payload massimo:** 180 byte.
+
+### 4.2 Numero di sequenza
+
+- Ogni nodo mantiene un contatore SEQ privato, inizializzato a 1 al boot, che si incrementa ad ogni frame trasmesso (indipendentemente dal tipo).
+- SEQ è usato dal ricevente per:
+  - collegare un ACK al frame che lo ha generato;
+  - deduplicare i frame in arrivo (buffer degli ultimi 8 SEQ visti per sorgente).
+- Il contatore wrappa a 1 (non a 0, che è riservato a "non applicabile interno").
+
+### 4.3 CRC
+
+Algoritmo: **CRC-16/CCITT-FALSE**  
+Polinomio: `0x1021`, valore iniziale: `0xFFFF`, nessun XOR finale, no reverse.  
+Copre: tutti i byte dal campo MAGIC fino all'ultimo byte del PAYLOAD incluso.  
+Non copre: i 2 byte CRC stessi.
+
+Pseudocodice:
+```
+crc = 0xFFFF
+for byte in frame[0 .. 7+LEN]:
+    crc ^= (byte << 8)
+    for _ in range(8):
+        crc = (crc << 1) ^ 0x1021 if (crc & 0x8000) else (crc << 1)
+        crc &= 0xFFFF
+```
+
+### 4.4 Endianness
+
+Tutti i campi multi-byte sono **Little Endian** (byte meno significativo prima), coerente con l'architettura Xtensa dell'ESP32.
+
+---
+
+## 5. Tipi di messaggio
+
+### 5.1 Tabella riassuntiva
+
+| Codice | Nome             | Direzione            | ACK richiesto | Payload struct         |
+|--------|------------------|----------------------|---------------|------------------------|
+| `0x01` | ANNOUNCE         | Slave → Master       | Sì            | `PayloadAnnounce`      |
+| `0x02` | ACK              | Bidirezionale        | No            | `PayloadAck`           |
+| `0x03` | DISCOVERY_REQ    | Master → Broadcast   | No            | –                      |
+| `0x04` | SERVICE_LIST     | Slave → Master       | No            | `PayloadServiceList`   |
+| `0x05` | CMD              | Master → Slave       | Sì            | `PayloadCmd`           |
+| `0x06` | CMD_RESULT       | Slave → Master       | No            | `PayloadCmdResult`     |
+| `0x10` | OTA_START        | Master → Slave       | Sì (`OTA_READY`) | `PayloadOtaStart`   |
+| `0x11` | OTA_CHUNK        | Master → Slave       | Sì (per chunk)| `PayloadOtaChunk`      |
+| `0x12` | OTA_END          | Master → Slave       | Sì (`OTA_DONE`) | `PayloadOtaEnd`      |
+| `0x13` | OTA_ACK          | Slave → Master       | No            | `PayloadOtaAck`        |
+| `0x20` | RELAY_FWD        | Relay → qualsiasi    | No            | Frame originale wrappato |
+| `0x30` | HEARTBEAT        | Slave → Master       | No            | `PayloadHeartbeat`     |
+| `0x40` | CONFIG           | Master → Slave       | Sì            | `PayloadConfig`        |
+| `0x41` | CONFIG_ACK       | Slave → Master       | No            | `PayloadConfigAck`     |
+
+### 5.2 Regola ACK
+
+Un nodo deve inviare `MSG_ACK` per ogni messaggio ricevuto che ha il flag "ACK richiesto" nella tabella sopra, entro **200 ms** dalla ricezione.  
+L'ACK usa:
+- `dst` = `src` del frame originale
+- `src` = proprio indirizzo
+- `seq` = stesso SEQ del frame originale (non il proprio contatore)
+- `PayloadAck.status` = `ACK_OK` o codice di errore
+
+---
+
+## 6. Dettaglio payload
+
+### 6.1 ANNOUNCE (`0x01`)
+
+Inviato dallo slave al boot e in risposta a DISCOVERY_REQ.
+
+```c
+struct PayloadAnnounce {
+    char    name[16];        // nome human-readable, null-terminated
+    uint8_t service_count;   // numero di servizi offerti (0–8)
+    uint8_t fw_major;        // versione firmware
+    uint8_t fw_minor;
+    uint8_t flags;           // bit 0: capace di relay | bit 1–7: riservati
+    uint8_t hop;             // 0 = diretto, 1+ = arrivato via relay
+    uint8_t relay_src;       // ID del relay che ha inoltrato (valido se hop > 0)
+};
+// Totale: 22 byte
+```
+
+Dopo ANNOUNCE il master risponde con ACK. Lo slave deve attendere l'ACK prima di considerarsi registrato. Se non riceve ACK entro `ACK_TIMEOUT_MS` (2000 ms), riprova fino a 3 volte, poi entra in **modalità standalone** (continua a funzionare senza master).
+
+### 6.2 ACK (`0x02`)
+
+```c
+struct PayloadAck {
+    uint16_t ack_seq;     // SEQ del messaggio confermato
+    uint8_t  status;      // AckStatus (vedi §7)
+    char     message[8];  // messaggio opzionale, null-terminated
+};
+// Totale: 11 byte
+```
+
+### 6.3 DISCOVERY_REQ (`0x03`)
+
+Nessun payload. DST = `0xFF` (broadcast). Ogni slave che riceve un DISCOVERY_REQ risponde con ANNOUNCE entro un **jitter casuale** di 0–500 ms per evitare collisioni.
+
+```
+jitter_ms = (slave_id * 37) % 500   // deterministico ma distribuito
+```
+
+### 6.4 SERVICE_LIST (`0x04`)
+
+```c
+struct ServiceEntry {
+    uint8_t service_id;   // ID univoco del servizio (vedi §8)
+    char    name[16];     // es. "dht22_sensor"
+    uint8_t version;      // versione dell'implementazione
+    uint8_t active;       // 1 = attivo ora
+};
+
+struct PayloadServiceList {
+    uint8_t      count;
+    ServiceEntry services[8];   // max 8 servizi
+};
+// Totale max: 1 + 8*18 = 145 byte
+```
+
+### 6.5 CMD (`0x05`)
+
+```c
+struct PayloadCmd {
+    uint8_t service_id;  // quale servizio deve gestire il comando
+    uint8_t cmd_id;      // comando specifico del servizio (vedi §8)
+    uint8_t args_len;    // lunghezza degli argomenti in byte
+    uint8_t args[64];    // argomenti raw (interpretazione dipende da service+cmd)
+};
+// Totale max: 3 + 64 = 67 byte
+```
+
+### 6.6 CMD_RESULT (`0x06`)
+
+```c
+struct PayloadCmdResult {
+    uint8_t service_id;
+    uint8_t cmd_id;
+    uint8_t status;      // 0x00 = ok, altri = errore specifico del servizio
+    uint8_t data_len;
+    uint8_t data[64];    // risultato raw
+};
+// Totale max: 4 + 64 = 68 byte
+```
+
+### 6.7 OTA_START (`0x10`)
+
+```c
+enum OtaType : uint8_t {
+    OTA_TYPE_FIRMWARE   = 0x01,  // binario ESP32 completo (partizione OTA)
+    OTA_TYPE_CONFIG     = 0x02,  // blob di configurazione → NVS
+    OTA_TYPE_MODULE_SEL = 0x03,  // selezione/attivazione moduli esistenti
+};
+
+struct PayloadOtaStart {
+    uint8_t  ota_type;        // OtaType
+    uint32_t total_size;      // byte totali del payload
+    uint16_t chunk_size;      // byte per ogni OTA_CHUNK (max 128)
+    uint16_t total_chunks;    // ceil(total_size / chunk_size)
+    uint32_t crc32_full;      // CRC32 dell'intero payload (verifica finale)
+    char     version[8];      // stringa versione target, es. "1.2.0"
+};
+// Totale: 22 byte
+```
+
+Lo slave risponde con `MSG_OTA_ACK` con status `ACK_OTA_READY` se può accettare l'OTA, oppure `ACK_BUSY` se è già in corso un trasferimento.
+
+### 6.8 OTA_CHUNK (`0x11`)
+
+```c
+struct PayloadOtaChunk {
+    uint16_t chunk_index;         // indice 0-based
+    uint8_t  data_len;            // byte validi in data[] (≤ chunk_size dichiarato)
+    uint8_t  data[128];           // dati grezzi
+};
+// Totale max: 3 + 128 = 131 byte
+```
+
+### 6.9 OTA_END (`0x12`)
+
+```c
+struct PayloadOtaEnd {
+    uint32_t final_crc32;   // riconferma il CRC32 dell'intero payload
+};
+// Totale: 4 byte
+```
+
+Lo slave verifica il CRC32 accumulato durante i chunk contro `final_crc32`. Se corrispondono: applica e riavvia. Se no: invia `ACK_OTA_FAIL` e scarta il trasferimento (il firmware precedente rimane attivo).
+
+### 6.10 OTA_ACK (`0x13`)
+
+```c
+struct PayloadOtaAck {
+    uint8_t  status;         // AckStatus (ACK_OTA_READY, ACK_OTA_CHUNK_OK, ecc.)
+    uint16_t chunk_index;    // chunk a cui si riferisce; 0xFFFF = globale
+    char     message[16];    // messaggio opzionale (es. "crc mismatch")
+};
+// Totale: 19 byte
+```
+
+### 6.11 RELAY_FWD (`0x20`)
+
+Il frame originale viene wrappato come payload di RELAY_FWD. Il relay:
+1. Riceve un frame con `dst != self_id` e `hop > 0`.
+2. Costruisce un nuovo frame RELAY_FWD con:
+   - `dst` = `dst` del frame originale (o broadcast se il relay non conosce il percorso)
+   - `src` = proprio `self_id`
+   - payload = frame originale con `hop` decrementato di 1 e `relay_src` = `self_id`
+3. Trasmette.
+
+**Anti-loop:** ogni relay mantiene una cache circolare degli ultimi 8 SEQ visti per coppia `(src_originale, seq_originale)`. Se il SEQ è già presente, il frame viene scartato silenziosamente.
+
+### 6.12 HEARTBEAT (`0x30`)
+
+```c
+struct PayloadHeartbeat {
+    uint32_t uptime_s;          // secondi dall'ultimo boot
+    int8_t   last_rssi;         // RSSI dell'ultimo frame ricevuto (dBm, negativo)
+    uint8_t  free_heap_pct;     // heap libero: (free/total)*100
+    uint8_t  active_services;   // bitmask: bit N = servizio N attivo
+    uint8_t  relay_mode;        // 1 se in modalità relay attiva
+};
+// Totale: 8 byte
+```
+
+Inviato ogni `HEARTBEAT_INTERVAL_MS` (default 10000). Non richiede ACK. Il master aggiorna `last_seen` dello slave ad ogni HEARTBEAT ricevuto.
+
+### 6.13 CONFIG (`0x40`)
+
+```c
+struct ConfigParam {
+    char key[12];    // nome parametro, es. "pin_dht", "ssid"
+    char value[20];  // valore come stringa, es. "22", "MyNetwork"
+};
+
+struct PayloadConfig {
+    uint8_t     service_id;    // servizio target
+    uint8_t     param_count;   // numero di coppie chiave/valore (max 4)
+    ConfigParam params[4];
+};
+// Totale max: 2 + 4*32 = 130 byte
+```
+
+Lo slave applica i parametri al servizio indicato, li persiste in NVS, e risponde con CONFIG_ACK.
+
+### 6.14 CONFIG_ACK (`0x41`)
+
+```c
+struct PayloadConfigAck {
+    uint8_t service_id;
+    uint8_t status;       // 0x00 = ok, 0x01 = servizio non trovato,
+                          // 0x02 = parametro non riconosciuto,
+                          // 0x03 = valore non valido
+    uint8_t applied;      // numero di parametri effettivamente applicati
+};
+// Totale: 3 byte
+```
+
+---
+
+## 7. Codici di stato (AckStatus)
+
+| Codice | Nome              | Descrizione |
+|--------|-------------------|-------------|
+| `0x00` | ACK_OK            | Operazione completata con successo |
+| `0x01` | ACK_ERROR         | Errore generico |
+| `0x02` | ACK_BUSY          | Nodo occupato (es. OTA in corso) |
+| `0x03` | ACK_UNKNOWN_CMD   | Comando non riconosciuto |
+| `0x04` | ACK_NOT_FOUND     | Risorsa non trovata |
+| `0x10` | ACK_OTA_READY     | Slave pronto a ricevere OTA |
+| `0x11` | ACK_OTA_APPLYING  | Slave sta applicando il firmware |
+| `0x12` | ACK_OTA_CHUNK_OK  | Chunk ricevuto e scritto correttamente |
+| `0x13` | ACK_OTA_CHUNK_ERR | Chunk corrotto (CRC locale fallito) |
+| `0x14` | ACK_OTA_DONE      | OTA completato, prossimo reboot |
+| `0x15` | ACK_OTA_FAIL      | OTA fallito (CRC32 finale errato) |
+
+---
+
+## 8. Catalogo servizi e comandi
+
+### 8.1 ID servizi riservati
+
+| ID     | Nome             | Descrizione |
+|--------|------------------|-------------|
+| `0x00` | CORE             | Comandi di sistema (sempre presenti) |
+| `0x01` | SENSOR           | Lettura sensori ambientali |
+| `0x02` | HTTP_SERVER      | Server HTTP con GUI |
+| `0x03` | RELAY            | Modalità relay/repeater |
+| `0x04` | LOGGER           | Log su Serial / SD |
+| `0x05`–`0x7F` | Riservati LMP | – |
+| `0x80`–`0xFF` | User-defined | Servizi custom dell'utente |
+
+### 8.2 Servizio CORE (`0x00`)
+
+| CMD ID | Nome          | Args               | Risposta         |
+|--------|---------------|--------------------|------------------|
+| `0x01` | PING          | –                  | uptime_ms (4B)   |
+| `0x02` | REBOOT        | –                  | ACK_OK poi reboot|
+| `0x03` | GET_INFO      | –                  | PayloadAnnounce  |
+| `0x04` | GET_SERVICES  | –                  | PayloadServiceList|
+| `0x05` | SET_RELAY     | `uint8_t enable`   | ACK_OK/ERROR     |
+| `0x06` | GET_HEAP      | –                  | free+total (8B)  |
+
+### 8.3 Servizio SENSOR (`0x01`)
+
+| CMD ID | Nome            | Args                          | Risposta                   |
+|--------|-----------------|-------------------------------|----------------------------|
+| `0x01` | READ_ALL        | –                             | JSON compatto `{t:22.5,h:60,p:1013}` |
+| `0x02` | READ_FIELD      | `uint8_t field_id`            | float (4B)                 |
+| `0x03` | SET_INTERVAL    | `uint32_t ms`                 | ACK_OK                     |
+| `0x04` | SET_PIN         | `uint8_t pin`                 | ACK_OK                     |
+| `0x05` | GET_STATS       | –                             | min/max/avg ultimi 10 campioni |
+
+### 8.4 Servizio HTTP_SERVER (`0x02`)
+
+| CMD ID | Nome       | Args                     | Risposta      |
+|--------|------------|--------------------------|---------------|
+| `0x01` | START      | `uint16_t port`          | ACK_OK/ERROR  |
+| `0x02` | STOP       | –                        | ACK_OK        |
+| `0x03` | GET_STATUS | –                        | `{running:1,port:80,clients:2}` |
+| `0x04` | SET_SSID   | `char ssid[32]`          | ACK_OK        |
+| `0x05` | SET_PASS   | `char pass[32]`          | ACK_OK        |
+
+### 8.5 Servizio RELAY (`0x03`)
+
+| CMD ID | Nome         | Args               | Risposta              |
+|--------|--------------|--------------------|-----------------------|
+| `0x01` | ENABLE       | –                  | ACK_OK                |
+| `0x02` | DISABLE      | –                  | ACK_OK                |
+| `0x03` | GET_STATS    | –                  | forwarded/dropped (8B)|
+| `0x04` | SET_HOP_LIMIT| `uint8_t max_hops` | ACK_OK                |
+
+---
+
+## 9. Sequenze di handshake
+
+### 9.1 Registrazione slave (boot)
+
+```
+SLAVE                           MASTER
+  │                                │
+  │── ANNOUNCE (seq=1) ───────────►│  slave si presenta
+  │                                │  master aggiunge SlaveNode
+  │◄── ACK (seq=1, OK) ────────────│
+  │                                │
+  │  [se no ACK entro 2s: retry]   │
+  │  [dopo 3 retry: standalone]    │
+```
+
+### 9.2 Discovery periodico (master-initiated)
+
+```
+MASTER                    SLAVE_1         SLAVE_2
+  │                          │               │
+  │── DISCOVERY_REQ ────────►│──────────────►│  broadcast
+  │                          │ (jitter 0ms)  │ (jitter 185ms)
+  │◄── ANNOUNCE ─────────────│               │
+  │◄── ANNOUNCE ─────────────│───────────────│
+  │                          │               │
+  │── ACK → SLAVE_1 ────────►│               │
+  │── ACK → SLAVE_2 ─────────│──────────────►│
+```
+
+### 9.3 Esecuzione comando
+
+```
+MASTER                           SLAVE
+  │                                │
+  │── CMD (seq=N, svc=1, cmd=1) ──►│
+  │◄── ACK (seq=N, OK) ────────────│  conferma ricezione
+  │                                │  [esegue il comando]
+  │◄── CMD_RESULT (svc=1, cmd=1) ──│  risultato
+```
+
+Il CMD_RESULT non richiede ACK. Il master attende il CMD_RESULT con timeout `CMD_TIMEOUT_MS` (5000 ms). Se scade, lo segnala in console senza ritentare (il comando potrebbe essere già in esecuzione).
+
+### 9.4 OTA config (OTA_TYPE_CONFIG)
+
+```
+MASTER                           SLAVE
+  │                                │
+  │── OTA_START (type=CONFIG) ────►│
+  │◄── OTA_ACK (READY) ────────────│
+  │                                │
+  │── OTA_CHUNK (idx=0) ──────────►│
+  │◄── OTA_ACK (CHUNK_OK, idx=0) ──│
+  │── OTA_CHUNK (idx=1) ──────────►│
+  │◄── OTA_ACK (CHUNK_OK, idx=1) ──│
+  │  ... (chunk errato: CHUNK_ERR, master ritrasmette stesso indice)
+  │                                │
+  │── OTA_END (crc32) ────────────►│
+  │                                │  [verifica CRC32]
+  │◄── OTA_ACK (DONE) ─────────────│  config applicata, nessun reboot
+  │                                │
+```
+
+### 9.5 OTA firmware (OTA_TYPE_FIRMWARE)
+
+```
+MASTER                           SLAVE
+  │                                │
+  │── OTA_START (type=FIRMWARE) ──►│
+  │◄── OTA_ACK (READY) ────────────│  slave apre partizione OTA inattiva
+  │                                │
+  │── OTA_CHUNK (idx=0..N) ───────►│  [loop con ACK per ogni chunk]
+  │◄── OTA_ACK (CHUNK_OK) ─────────│
+  │                                │
+  │── OTA_END (crc32) ────────────►│
+  │                                │  [CRC32 ok: esp_ota_end()]
+  │◄── OTA_ACK (APPLYING) ─────────│  [set_boot_partition + restart]
+  │                                │
+  │  [slave offline 3–5 secondi]   │
+  │                                │
+  │◄── ANNOUNCE ───────────────────│  slave ripartito con nuovo fw
+```
+
+In caso di CRC32 errato:
+```
+  │◄── OTA_ACK (FAIL, "crc32 mismatch") ─│  firmware vecchio resta attivo
+```
+
+### 9.6 Relay hop
+
+```
+MASTER          RELAY (slave_02)     SLAVE_05 (fuori portata diretta)
+  │                   │                     │
+  │── CMD → 0x05 ────►│                     │  master invia a slave_05
+  │                   │  hop=2, relay_src=0 │
+  │                   │── RELAY_FWD ────────►│  relay decrementa hop, forward
+  │                   │◄── CMD_RESULT ───────│
+  │◄── RELAY_FWD ─────│                     │  relay forward la risposta
+  │   (relay_src=02)  │                     │
+```
+
+Il master, vedendo `relay_src=02` nei frame di slave_05, aggiorna il grafo:
+```
+slave_05.hop_count  = 1
+slave_05.relay_src  = 0x02
+```
+
+---
+
+## 10. Gestione errori e timeout
+
+| Situazione                         | Comportamento                                                   |
+|------------------------------------|-----------------------------------------------------------------|
+| Frame con CRC errato               | Scartato silenziosamente. Nessun NAK.                          |
+| MAGIC non trovato nel buffer       | Parser scarta byte finché non trova `0xAB`.                    |
+| LEN > 180                          | Frame scartato, contatore `err_count` incrementato.            |
+| ACK non ricevuto entro timeout     | Ritrasmissione fino a `ACK_RETRIES` (3). Poi notifica console. |
+| OTA chunk non ACK-ato              | Ritrasmissione dello stesso chunk. Max `ACK_RETRIES` volte.    |
+| Slave offline (heartbeat scaduto)  | Master marca OFFLINE. OTA e CMD verso quel nodo vengono bloccati. |
+| Slave riconnesso dopo offline      | Nuovo ANNOUNCE resetta lo stato come se fosse un boot fresh.   |
+| Buffer UART overflow (>512B)       | Buffer resettato, `err_count` incrementato, log in console.    |
+
+---
+
+## 11. Parametri di timing
+
+| Parametro              | Default   | Note |
+|------------------------|-----------|------|
+| `ACK_TIMEOUT_MS`       | 2000 ms   | Attesa ACK prima di retry |
+| `ACK_RETRIES`          | 3         | Tentativi prima di rinunciare |
+| `CMD_TIMEOUT_MS`       | 5000 ms   | Attesa CMD_RESULT |
+| `DISCOVERY_INTERVAL_MS`| 10000 ms  | Frequenza DISCOVERY_REQ del master |
+| `HEARTBEAT_INTERVAL_MS`| 10000 ms  | Frequenza HEARTBEAT dello slave |
+| `HEARTBEAT_TIMEOUT_MS` | 30000 ms  | Dopo quanto un slave è OFFLINE |
+| `OTA_CHUNK_DELAY_MS`   | 500 ms    | Pausa tra chunk OTA |
+| `ANNOUNCE_JITTER_MAX`  | 500 ms    | Jitter max risposta a DISCOVERY |
+| `STANDALONE_RETRY_MS`  | 5000 ms   | Retry ANNOUNCE in modalità standalone |
+
+---
+
+## 12. Vincoli LoRa e scelte di design
+
+### Perché payload max 180 byte?
+
+I moduli LoRa comuni supportano payload fino a 255 byte a livello radio, ma con SF9 e BW 125 kHz il time-on-air per 255 byte supera 1 secondo, aumentando il rischio di collisioni in reti multi-nodo. 180 byte è un compromesso che mantiene il time-on-air sotto 800 ms e lascia margine per l'overhead radio del modulo.
+
+### Perché chunk OTA da 128 byte?
+
+Con 128 byte di dati + 3 byte header OTA_CHUNK + 10 byte frame overhead = 141 byte totali. Abbondantemente sotto il limite e con buona efficienza. Ogni chunk richiede un ACK → time-on-air andata + ritorno ~ 1.6 s → throughput effettivo ~ 640 bps. Un firmware da 512 KB richiederebbe ~13 minuti. Per questo OTA_TYPE_CONFIG (pochi KB) è la modalità raccomandata per la normale operatività.
+
+### Perché niente NACK?
+
+I NACK complicano il flow control. Con ARQ puro (timeout + retry) il mittente sa sempre entro `ACK_TIMEOUT_MS * ACK_RETRIES` se il frame è stato consegnato. In una rete a basso traffico come questa, la semplicità vale più dell'efficienza del NACK.
+
+---
+
+## 13. Changelog
+
+| Versione | Data       | Modifiche |
+|----------|------------|-----------|
+| 1.0      | 2026-05-20 | Prima versione stabile |
