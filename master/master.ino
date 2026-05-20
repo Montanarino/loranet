@@ -2,7 +2,7 @@
 #include "shared/lora_protocol.h"
 #include "shared/service_ids.h"
 #include "src/lora_manager.h"
-// #include "src/slave_registry.h" // Verrà incluso quando scriverai la registry
+#include "src/slave_registry.h"
 
 // ==========================================
 // Handles di FreeRTOS (Specifiche Fase 1)
@@ -12,6 +12,7 @@ SemaphoreHandle_t registryMutex = NULL; // Mutex per proteggere l'accesso alla S
 
 // Istanza del gestore LoRa
 LoRaManager loraManager;
+SlaveRegistry slaveRegistry;
 
 // Prototipi dei Task FreeRTOS
 void loraRxTask(void *pvParameters);
