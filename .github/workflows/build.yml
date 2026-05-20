@@ -1,0 +1,40 @@
+name: Compilazione PlatformIO (Master & Slave)
+
+# Esegui l'azione ad ogni push o pull request sul branch main (o master)
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    name: Build ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    
+    # Usiamo una matrice per compilare sia il master che lo slave in parallelo!
+    strategy:
+      matrix:
+        project: [master, slave]
+
+    steps:
+      # 1. Scarica il codice dal repository
+      - name: Checkout del codice
+        uses: actions/checkout@v4
+
+      # 2. Prepara l'ambiente Python (PlatformIO è scritto in Python)
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # 3. Installa PlatformIO
+      - name: Installa PlatformIO Core
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      # 4. Compila il progetto specifico usando il flag -d (directory)
+      - name: Compila firmware
+        run: pio run -d ${{ matrix.project }}
