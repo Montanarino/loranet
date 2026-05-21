@@ -148,6 +148,7 @@ void sendAnnounce() {
     if (frame_len > 0) {
         // Invia i raw bytes sulla Seriale 2
         // Serial2.write((uint8_t*)&txFrame, frame_len);
+        loraManager.sendFrame(&txFrame);
         Serial.println("[TX] MSG_ANNOUNCE inviato sulla rete.");
     }
 }

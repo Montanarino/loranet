@@ -22,6 +22,7 @@ bool LoRaManager::begin() {
 #elif defined(LORA_INTERFACE_SPI)
     // Inizializza i pin SPI per i chip LoRa "nudi" (es. SX1278)
     SPI.begin(LORA_SPI_SCK, LORA_SPI_MISO, LORA_SPI_MOSI, LORA_SPI_CS);
+    LoRa.setSPI(SPI);
     LoRa.setPins(LORA_SPI_CS, LORA_SPI_RST, LORA_SPI_DIO0);
     
     if (!LoRa.begin(LORA_FREQ)) {
@@ -69,6 +70,25 @@ void LoRaManager::sendRaw(const uint8_t *data, size_t len) {
 #endif
 }
 
+void LoRaManager::sendFrame(LmpFrame* frame) {
+    uint8_t wireBuffer[256];
+    uint16_t len = frame->header.len;
+    
+    // 1. Copia Header
+    memcpy(wireBuffer, &frame->header, sizeof(LmpFrameHeader));
+    // 2. Copia Payload
+    if (len > 0) {
+        memcpy(wireBuffer + sizeof(LmpFrameHeader), frame->payload, len);
+    }
+    // 3. Estrae il vero CRC usando il nome corretto (crc16)
+    uint16_t crc_idx = sizeof(LmpFrameHeader) + len;
+    wireBuffer[crc_idx] = frame->crc16 & 0xFF;
+    wireBuffer[crc_idx + 1] = (frame->crc16 >> 8) & 0xFF;
+    
+    // Invia i byte compattati
+    sendRaw(wireBuffer, crc_idx + 2);
+}
+
 uint16_t LoRaManager::getNextSeq() {
     uint16_t seq = _tx_seq++;
     if (_tx_seq == 0) {
@@ -114,24 +134,30 @@ bool LoRaManager::processRxByte(uint8_t incoming_byte, LmpFrame *out_frame) {
             }
             break;
 
-        case ParserState::READ_CRC:
-            frame_buffer[_rx_index++] = incoming_byte;
-            
+        case ParserState::READ_CRC: {
             uint16_t expected_total_size = sizeof(LmpFrameHeader) + _rx_frame.header.len + 2;
+            uint16_t crc_byte_index = _rx_index - (expected_total_size - 2); 
             
-            // CRC completo (2 byte)
-            if (_rx_index == expected_total_size) {
+            if (crc_byte_index == 0) {
+                _rx_frame.crc16 = incoming_byte; // Primo byte (LSB)
+                _rx_index++;
+            } else if (crc_byte_index == 1) {
+                _rx_frame.crc16 |= (incoming_byte << 8); // Secondo byte (MSB)
+                _rx_index++;
+                
+                // Valida il frame!
                 if (lmp_validate_frame(&_rx_frame)) {
-                    // Frame integro! Lo copiamo e resettiamo la macchina
-                    memcpy(out_frame, &_rx_frame, expected_total_size);
+                    memcpy(out_frame, &_rx_frame, sizeof(LmpFrame));
                     _rx_state = ParserState::WAIT_MAGIC;
                     return true;
                 } else {
+                    Serial.println("[DEBUG] CRC Fallito! Dati corrotti in aria.");
                     _err_count++;
-                    _rx_state = ParserState::WAIT_MAGIC; // Frame corrotto, reset
+                    _rx_state = ParserState::WAIT_MAGIC;
                 }
             }
             break;
+        }
     }
     
     return false;

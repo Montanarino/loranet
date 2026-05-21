@@ -33,6 +33,7 @@ public:
     
     // Invia byte grezzi alla radio
     void sendRaw(const uint8_t *data, size_t len);
+    void sendFrame(LmpFrame *frame);
     
     // Genera il prossimo numero di sequenza per le trasmissioni
     uint16_t getNextSeq(); 
