@@ -1,6 +1,6 @@
 #include <Arduino.h>
-#include "shared/lora_protocol.h"
-#include "shared/service_ids.h"
+#include "lora_protocol.h"
+//#include "services_ids.h"
 #include "lora_manager.h"
 // #include "services/service_registry.h" // Includerai questo nella Fase 1.2
 
