@@ -1,6 +1,6 @@
 #pragma once
 #include <Arduino.h>
-#include "shared/lora_protocol.h"
+#include "lora_protocol.h"
 #include "config.h" // Includiamo i pin e la scelta dell'interfaccia
 
 // Stati possibili del parser

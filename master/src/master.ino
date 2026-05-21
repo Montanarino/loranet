@@ -1,8 +1,8 @@
 #include <Arduino.h>
-#include "shared/lora_protocol.h"
-#include "shared/service_ids.h"
-#include "src/lora_manager.h"
-#include "src/slave_registry.h"
+#include "lora_protocol.h"
+//#include "services_ids.h"
+#include "lora_manager.h"
+#include "slave_registry.h"
 
 // ==========================================
 // Handles di FreeRTOS (Specifiche Fase 1)

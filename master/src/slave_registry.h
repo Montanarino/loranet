@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include "shared/lora_protocol.h"
+#include "lora_protocol.h"
 
 // Numero massimo di nodi supportati contemporaneamente in RAM
 #define MAX_SLAVES 32 
