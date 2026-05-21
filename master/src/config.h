@@ -1,35 +1,38 @@
 #pragma once
 
-// ==========================================
-// 1. SCELTA DELL'INTERFACCIA HARDWARE
-// ==========================================
-// De-commenta SOLO l'interfaccia che stai utilizzando fisicamente
-#define LORA_INTERFACE_UART
-// #define LORA_INTERFACE_SPI
+// =========================================================================
+// CONFIGURAZIONE IDENTITÀ NODO
+// =========================================================================
+#define SLAVE_ID       0x01             // Indirizzo univoco del nodo (0x01 - 0xFE)
+#define SLAVE_NAME     "Sensore_Serra_1" // Identificativo letterale (max 16 caratteri)
+#define CAPABLE_RELAY  true             // true se la scheda supporta la modalità ripetitore
 
-// ==========================================
-// 2. CONFIGURAZIONE PIN UART (Moduli Trasparenti)
-// ==========================================
-#ifdef LORA_INTERFACE_UART
-    #define LORA_UART_TX_PIN 17
-    #define LORA_UART_RX_PIN 16
-    #define LORA_UART_BAUD   9600
-#endif
+// =========================================================================
+// INTERFACCIA HARDWARE
+// =========================================================================
+// Sulla LilyGO T3 commentiamo l'UART e attiviamo l'SPI
+// #define LORA_INTERFACE_UART
+#define LORA_INTERFACE_SPI
 
-// ==========================================
-// 3. CONFIGURAZIONE PIN SPI (Chip SX127x nudi)
-// ==========================================
+// =========================================================================
+// CONFIGURAZIONE PIN SPI (Specifici per LilyGO T3 v1.6.1)
+// =========================================================================
 #ifdef LORA_INTERFACE_SPI
-    #define LORA_SPI_SCK  18
-    #define LORA_SPI_MISO 19
-    #define LORA_SPI_MOSI 23
-    #define LORA_SPI_CS   5
-    #define LORA_SPI_RST  14
-    #define LORA_SPI_DIO0 26
+    // Pin del bus SPI mappati sulla T3 v1.6.1
+    #define LORA_SPI_SCK      5
+    #define LORA_SPI_MISO     19
+    #define LORA_SPI_MOSI     27
     
-    // I moduli UART usano i comandi AT per questi parametri, 
-    // ma i moduli SPI devono configurarli via software all'avvio.
-    #define LORA_FREQ     433E6 // Frequenza (es. 433 MHz)
-    #define LORA_SF       9     // Spreading Factor
-    #define LORA_BW       125E3 // Bandwidth in Hz
+    // Pin di controllo del chip LoRa
+    #define LORA_SPI_CS       18
+    #define LORA_SPI_RST      23   // Nota: sulle vecchie versioni V1 era il 14, sulla v1.6.1 è il 23
+    #define LORA_SPI_DIO0     26   // Pin di interrupt fondamentale per la ricezione
+    
+    // --- PARAMETRI RADIO (MOLTO IMPORTANTE) ---
+    // Controlla l'etichetta o il chip antenna dietro la tua LilyGO!
+    // Se c'è scritto 433, usa 433E6. Se c'è scritto 868, usa 868E6.
+    #define LORA_FREQ         868E6     // Frequenza operativa (es. 868 MHz per l'Europa)
+    
+    #define LORA_SF           9         // Spreading Factor (da specifiche del tuo protocollo)
+    #define LORA_BW           125E3     // Bandwidth in Hz
 #endif
