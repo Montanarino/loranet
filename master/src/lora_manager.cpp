@@ -1,107 +1,88 @@
 #include "lora_manager.h"
 
+// Se è scelto l'SPI, includiamo la libreria standard LoRa
+#ifdef LORA_INTERFACE_SPI
+#include <SPI.h>
+#include <LoRa.h> // Richiede la libreria sandeepmistry/LoRa
+#endif
+
 LoRaManager::LoRaManager() {
     _rx_state = ParserState::WAIT_MAGIC;
     _rx_index = 0;
     _err_count = 0;
+    _tx_seq = 1; // Inizializza SEQ a 1 come da specifiche
 }
 
-void LoRaManager::begin() {
-    // Inizializza la seriale hardware connessa al LoRa (es. Serial2)
-    Serial2.begin(9600, SERIAL_8N1, RX_PIN, TX_PIN);
+bool LoRaManager::begin() {
+#ifdef LORA_INTERFACE_UART
+    Serial2.begin(LORA_UART_BAUD, SERIAL_8N1, LORA_UART_RX_PIN, LORA_UART_TX_PIN);
+    return true; // L'UART non ha un vero check di fallimento su ESP32
+    
+#elif defined(LORA_INTERFACE_SPI)
+    SPI.begin(LORA_SPI_SCK, LORA_SPI_MISO, LORA_SPI_MOSI, LORA_SPI_CS);
+    LoRa.setPins(LORA_SPI_CS, LORA_SPI_RST, LORA_SPI_DIO0);
+    
+    if (!LoRa.begin(LORA_FREQ)) {
+        return false; // Errore di connessione SPI o chip rotto
+    }
+    
+    // Configurazione PHY per SPI
+    LoRa.setSpreadingFactor(LORA_SF);
+    LoRa.setSignalBandwidth(LORA_BW);
+    // LoRa.setCodingRate4(5); // Opzionale se vuoi forzare il CR
+    return true;
+#endif
 }
 
 bool LoRaManager::poll(LmpFrame *out_frame) {
-    // Leggi tutti i byte disponibili nel buffer UART
-    // Sostituisci Serial2 con la tua interfaccia seriale
+#ifdef LORA_INTERFACE_UART
     while (Serial2.available() > 0) {
-        uint8_t byte_in = Serial2.read();
-        
-        // Passa il byte alla state machine
-        if (processRxByte(byte_in, out_frame)) {
-            // Abbiamo un frame completo e valido!
-            return true; 
+        if (processRxByte(Serial2.read(), out_frame)) return true;
+    }
+    
+#elif defined(LORA_INTERFACE_SPI)
+    // I moduli SPI ricevono pacchetti interi, non stream continui
+    int packetSize = LoRa.parsePacket();
+    if (packetSize) {
+        while (LoRa.available()) {
+            if (processRxByte(LoRa.read(), out_frame)) {
+                // Se il pacchetto è valido, svuotiamo eventuale spazzatura rimasta nel buffer radio
+                while(LoRa.available()) LoRa.read();
+                return true;
+            }
         }
     }
+#endif
     return false;
 }
 
-bool LoRaManager::processRxByte(uint8_t incoming_byte, LmpFrame *out_frame) {
+void LoRaManager::sendRaw(const uint8_t *data, size_t len) {
+#ifdef LORA_INTERFACE_UART
+    Serial2.write(data, len);
     
-    // Cast del buffer della struct per potervi accedere byte per byte
-    uint8_t* frame_buffer = (uint8_t*)&_rx_frame;
+#elif defined(LORA_INTERFACE_SPI)
+    // Invio di un pacchetto strutturato via SPI
+    LoRa.beginPacket();
+    LoRa.write(data, len);
+    LoRa.endPacket();
+#endif
+}
 
-    switch (_rx_state) {
-        
-        case ParserState::WAIT_MAGIC:
-            if (incoming_byte == LMP_MAGIC_BYTE) {
-                frame_buffer[0] = incoming_byte;
-                _rx_index = 1;
-                _rx_state = ParserState::READ_HEADER;
-            }
-            // Se non è il MAGIC_BYTE, lo scartiamo in silenzio
-            break;
-
-        case ParserState::READ_HEADER:
-            frame_buffer[_rx_index++] = incoming_byte;
-            
-            // L'header è di 8 byte. Se ne abbiamo letti 8, l'header è completo
-            if (_rx_index == sizeof(LmpFrameHeader)) {
-                
-                // Verifichiamo se il campo 'len' (lunghezza payload) è sensato
-                if (_rx_frame.header.len > LMP_MAX_PAYLOAD_LEN) {
-                    // Lunghezza non valida! C'è stato un errore di trasmissione.
-                    // Resettiamo il parser e ricominciamo a cercare il MAGIC
-                    _err_count++;
-                    _rx_state = ParserState::WAIT_MAGIC;
-                    
-                } else if (_rx_frame.header.len == 0) {
-                    // Se non c'è payload (es. PING o ACK senza argomenti), saltiamo alla lettura del CRC
-                    _rx_state = ParserState::READ_CRC;
-                } else {
-                    // Se c'è payload, andiamo a leggerlo
-                    _rx_state = ParserState::READ_PAYLOAD;
-                }
-            }
-            break;
-
-        case ParserState::READ_PAYLOAD:
-            frame_buffer[_rx_index++] = incoming_byte;
-            
-            // Controlliamo se abbiamo letto tutti i byte dichiarati nel campo 'len'
-            if (_rx_index == sizeof(LmpFrameHeader) + _rx_frame.header.len) {
-                _rx_state = ParserState::READ_CRC;
-            }
-            break;
-
-        case ParserState::READ_CRC:
-            frame_buffer[_rx_index++] = incoming_byte;
-            
-            // Il CRC è di 2 byte. 
-            // Indice finale atteso = Header(8) + Payload(len) + CRC(2)
-            uint16_t expected_total_size = sizeof(LmpFrameHeader) + _rx_frame.header.len + 2;
-            
-            if (_rx_index == expected_total_size) {
-                // Abbiamo letto tutti i byte del pacchetto!
-                // Ora convalidiamo il CRC usando la funzione condivisa
-                if (lmp_validate_frame(&_rx_frame)) {
-                    
-                    // CRC OK! Copiamo il frame validato nel puntatore di uscita
-                    memcpy(out_frame, &_rx_frame, expected_total_size);
-                    
-                    // Resettiamo lo stato per il prossimo frame
-                    _rx_state = ParserState::WAIT_MAGIC;
-                    return true;
-                    
-                } else {
-                    // CRC fallito! Il pacchetto è corrotto.
-                    // Lo scartiamo silenziosamente e ricominciamo (come da specifiche)
-                    _err_count++;
-                    _rx_state = ParserState::WAIT_MAGIC;
-                }
-            }
-            break;
+uint16_t LoRaManager::getNextSeq() {
+    uint16_t seq = _tx_seq++;
+    // Il protocollo prevede che il contatore wrappi a 1 (0 = non applicabile)
+    if (_tx_seq == 0) {
+        _tx_seq = 1;
     }
-    
-    return false; // Pacchetto non ancora completo
+    return seq;
+}
+
+// ==============================================================
+// processRxByte(uint8_t incoming_byte, LmpFrame *out_frame)
+// RIMANE IDENTICO A QUELLO CHE HAI GIÀ SCRITTO!
+// Copialo/Incollalo qui senza modifiche.
+// ==============================================================
+bool LoRaManager::processRxByte(uint8_t incoming_byte, LmpFrame *out_frame) {
+    // ... [Inserisci la tua logica switch(rx_state) qui] ...
+    return false;
 }

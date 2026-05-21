@@ -1,30 +1,33 @@
 #pragma once
 #include <Arduino.h>
 #include "shared/lora_protocol.h"
+#include "config.h" // Includiamo i pin e la scelta dell'interfaccia
 
 // Stati possibili del parser
 enum class ParserState {
-    WAIT_MAGIC,   // In attesa del byte magico 0xAB
-    READ_HEADER,  // Lettura dell'header (7 byte rimanenti)
-    READ_PAYLOAD, // Lettura del payload (lunghezza variabile definita nell'header)
-    READ_CRC      // Lettura dei 2 byte del CRC
+    WAIT_MAGIC,
+    READ_HEADER,
+    READ_PAYLOAD,
+    READ_CRC
 };
 
 class LoRaManager {
 private:
     ParserState _rx_state;
-    LmpFrame _rx_frame;      // Buffer temporaneo per il frame in arrivo
-    uint16_t _rx_index;      // Indice del byte corrente in lettura
-    uint32_t _err_count;     // Contatore dei pacchetti scartati (per statistiche)
+    LmpFrame _rx_frame;      
+    uint16_t _rx_index;      
+    uint32_t _err_count;     
+    uint16_t _tx_seq;        // Contatore di sequenza per l'invio (Da protocollo)
 
-    // Metodo interno che gestisce la logica byte per byte
     bool processRxByte(uint8_t incoming_byte, LmpFrame *out_frame);
 
 public:
     LoRaManager();
-    void begin(); // Inizializza la Seriale e il modulo LoRa
     
-    // Da chiamare ripetutamente nel loop() o nel task FreeRTOS
-    // Restituisce true se un pacchetto completo e valido è pronto
+    bool begin(); // Ora restituisce bool per confermare l'inizializzazione
     bool poll(LmpFrame *out_frame); 
+    
+    // Funzioni aggiunte per astrazione e protocollo
+    void sendRaw(const uint8_t *data, size_t len);
+    uint16_t getNextSeq(); 
 };
