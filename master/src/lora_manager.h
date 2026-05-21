@@ -29,5 +29,6 @@ public:
     
     // Funzioni aggiunte per astrazione e protocollo
     void sendRaw(const uint8_t *data, size_t len);
+    void sendFrame(LmpFrame *frame);
     uint16_t getNextSeq(); 
 };
