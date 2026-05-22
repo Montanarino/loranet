@@ -111,14 +111,12 @@ bool LoRaManager::processRxByte(uint8_t incoming_byte, LmpFrame *out_frame) {
 
         case ParserState::READ_HEADER:
             frame_buffer[_rx_index++] = incoming_byte;
-            
-            // Header completo (8 byte)
             if (_rx_index == sizeof(LmpFrameHeader)) {
                 if (_rx_frame.header.len > LMP_MAX_PAYLOAD_LEN) {
                     _err_count++;
-                    _rx_state = ParserState::WAIT_MAGIC; // Lunghezza non valida, reset
+                    _rx_state = ParserState::WAIT_MAGIC;
                 } else if (_rx_frame.header.len == 0) {
-                    _rx_state = ParserState::READ_CRC;   // Frame senza payload (es. PING)
+                    _rx_state = ParserState::READ_CRC;
                 } else {
                     _rx_state = ParserState::READ_PAYLOAD;
                 }
@@ -127,38 +125,27 @@ bool LoRaManager::processRxByte(uint8_t incoming_byte, LmpFrame *out_frame) {
 
         case ParserState::READ_PAYLOAD:
             frame_buffer[_rx_index++] = incoming_byte;
-            
-            // Payload completo
             if (_rx_index == sizeof(LmpFrameHeader) + _rx_frame.header.len) {
                 _rx_state = ParserState::READ_CRC;
             }
             break;
 
-        case ParserState::READ_CRC: {
+        case ParserState::READ_CRC:
+            frame_buffer[_rx_index++] = incoming_byte;
             uint16_t expected_total_size = sizeof(LmpFrameHeader) + _rx_frame.header.len + 2;
-            uint16_t crc_byte_index = _rx_index - (expected_total_size - 2); 
             
-            if (crc_byte_index == 0) {
-                _rx_frame.crc16 = incoming_byte; // Primo byte (LSB)
-                _rx_index++;
-            } else if (crc_byte_index == 1) {
-                _rx_frame.crc16 |= (incoming_byte << 8); // Secondo byte (MSB)
-                _rx_index++;
-                
-                // Valida il frame!
+            if (_rx_index == expected_total_size) {
+                // Ora il tuo validatore originale troverà il CRC esattamente dove lo cerca!
                 if (lmp_validate_frame(&_rx_frame)) {
-                    memcpy(out_frame, &_rx_frame, sizeof(LmpFrame));
+                    memcpy(out_frame, &_rx_frame, expected_total_size);
                     _rx_state = ParserState::WAIT_MAGIC;
                     return true;
                 } else {
-                    Serial.println("[DEBUG] CRC Fallito! Dati corrotti in aria.");
                     _err_count++;
                     _rx_state = ParserState::WAIT_MAGIC;
                 }
             }
             break;
-        }
     }
-    
     return false;
 }

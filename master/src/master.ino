@@ -197,7 +197,7 @@ void mainLogicTask(void *pvParameters) {
 
                         if (ack_len > 0) {
                             // Invio fisico sulla rete radio tramite l'astrazione hardware
-                            loraManager.sendFrame(&ackFrame);
+                            loraManager.sendRaw((uint8_t*)&ackFrame, ack_len);
                             Serial.printf("-> [TX] Trasmesso MSG_ACK di conferma al Nodo 0x%02X\n", frameToProcess.header.src);
                         } else {
                             Serial.println("[ERROR] Impossibile costruire il frame di ACK.");

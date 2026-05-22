@@ -103,12 +103,10 @@ uint16_t LoRaManager::getNextSeq() {
 //                del flusso di byte LoRa
 // ==============================================================
 bool LoRaManager::processRxByte(uint8_t incoming_byte, LmpFrame *out_frame) {
-    // Puntatore usato per scrivere i byte direttamente nella memoria della struttura _rx_frame
     uint8_t* frame_buffer = (uint8_t*)&_rx_frame;
 
     switch (_rx_state) {
         case ParserState::WAIT_MAGIC:
-            // 1. Attendiamo il byte di sincronizzazione (0xAB) per iniziare a registrare
             if (incoming_byte == LMP_MAGIC_BYTE) {
                 frame_buffer[0] = incoming_byte;
                 _rx_index = 1;
@@ -118,56 +116,41 @@ bool LoRaManager::processRxByte(uint8_t incoming_byte, LmpFrame *out_frame) {
 
         case ParserState::READ_HEADER:
             frame_buffer[_rx_index++] = incoming_byte;
-            
-            // 2. Quando abbiamo letto tutti gli 8 byte dell'header (sizeof(LmpFrameHeader))
             if (_rx_index == sizeof(LmpFrameHeader)) {
-                // Controlliamo subito se la lunghezza del payload dichiarata è valida e sicura
                 if (_rx_frame.header.len > LMP_MAX_PAYLOAD_LEN) {
                     _err_count++;
-                    _rx_state = ParserState::WAIT_MAGIC; // Lunghezza non valida (frame corrotto), reset
+                    _rx_state = ParserState::WAIT_MAGIC;
                 } else if (_rx_frame.header.len == 0) {
-                    _rx_state = ParserState::READ_CRC;   // Frame senza payload (es. PING), passiamo subito al CRC
+                    _rx_state = ParserState::READ_CRC;
                 } else {
-                    _rx_state = ParserState::READ_PAYLOAD; // Dobbiamo leggere il payload
+                    _rx_state = ParserState::READ_PAYLOAD;
                 }
             }
             break;
 
         case ParserState::READ_PAYLOAD:
             frame_buffer[_rx_index++] = incoming_byte;
-            
-            // 3. Quando abbiamo letto un numero di byte pari a quello dichiarato nell'header
             if (_rx_index == sizeof(LmpFrameHeader) + _rx_frame.header.len) {
                 _rx_state = ParserState::READ_CRC;
             }
             break;
 
-        case ParserState::READ_CRC: {
+        case ParserState::READ_CRC:
+            frame_buffer[_rx_index++] = incoming_byte;
             uint16_t expected_total_size = sizeof(LmpFrameHeader) + _rx_frame.header.len + 2;
-            uint16_t crc_byte_index = _rx_index - (expected_total_size - 2); 
             
-            if (crc_byte_index == 0) {
-                _rx_frame.crc16 = incoming_byte; // Primo byte (LSB)
-                _rx_index++;
-            } else if (crc_byte_index == 1) {
-                _rx_frame.crc16 |= (incoming_byte << 8); // Secondo byte (MSB)
-                _rx_index++;
-                
-                // Valida il frame!
+            if (_rx_index == expected_total_size) {
+                // Ora il tuo validatore originale troverà il CRC esattamente dove lo cerca!
                 if (lmp_validate_frame(&_rx_frame)) {
-                    memcpy(out_frame, &_rx_frame, sizeof(LmpFrame));
+                    memcpy(out_frame, &_rx_frame, expected_total_size);
                     _rx_state = ParserState::WAIT_MAGIC;
                     return true;
                 } else {
-                    Serial.println("[DEBUG] CRC Fallito! Dati corrotti in aria.");
                     _err_count++;
                     _rx_state = ParserState::WAIT_MAGIC;
                 }
             }
             break;
-        }
     }
-    
-    // Ritorna false se stiamo ancora componendo il frame o se era solo rumore di fondo
     return false;
 }
