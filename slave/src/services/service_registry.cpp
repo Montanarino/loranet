@@ -70,3 +70,17 @@ void ServiceRegistry::dispatchCmd(const LmpFrame* rxFrame, LoRaManager* lora, ui
         Serial.println("-> [TX] ACK generato dal Registry e inviato al Master.");
     }
 }
+
+void ServiceRegistry::buildServiceListPayload(PayloadServiceList* payload) {
+    memset(payload, 0, sizeof(PayloadServiceList));
+    payload->count = _service_count;
+    
+    for (int i = 0; i < _service_count; i++) {
+        if (_services[i] != nullptr) {
+            payload->services[i].service_id = _services[i]->getId();
+            strncpy(payload->services[i].name, _services[i]->getName(), 16);
+            payload->services[i].version = _services[i]->getVersion();
+            payload->services[i].active = _services[i]->isActive() ? 1 : 0;
+        }
+    }
+}

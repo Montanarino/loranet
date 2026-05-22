@@ -17,6 +17,8 @@ public:
     
     // Lo smistatore di pacchetti (dispatcher)
     void dispatchCmd(const LmpFrame* rxFrame, LoRaManager* lora, uint8_t slave_id);
+
+    void buildServiceListPayload(PayloadServiceList* payload);
     
     uint8_t getCount() const { return _service_count; }
 };

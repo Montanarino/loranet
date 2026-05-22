@@ -141,6 +141,22 @@ void mainLogicTask(void *pvParameters) {
                     break;
                 }
 
+                case MSG_SERVICE_LIST: {
+                    PayloadServiceList* list = (PayloadServiceList*)frameToProcess.payload;
+                    Serial.printf("[LOGIC] Ricevuta SERVICE_LIST dal Nodo 0x%02X. Moduli installati (%d):\n", 
+                                  frameToProcess.header.src, list->count);
+                    
+                    for (int i = 0; i < list->count; i++) {
+                        Serial.printf("  -> [%d] SvcID: 0x%02X | Nome: %-15s | Ver: %d | Stato: %s\n",
+                                      i+1,
+                                      list->services[i].service_id, 
+                                      list->services[i].name, 
+                                      list->services[i].version,
+                                      list->services[i].active ? "ON" : "OFF");
+                    }
+                    break;
+                }
+
                 default:
                     break;
             }

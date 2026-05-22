@@ -57,6 +57,23 @@ void loop() {
                         is_registered = true;
                         last_heartbeat_time = millis(); 
                         Serial.println("[SYSTEM] Registrazione confermata dal Master!");
+
+                        // ========================================================
+                        // NUOVO: Invio automatico della lista servizi al Master!
+                        // ========================================================
+                        PayloadServiceList svcList;
+                        serviceRegistry.buildServiceListPayload(&svcList);
+
+                        LmpFrame listFrame;
+                        uint16_t list_len = lmp_build_frame(
+                            &listFrame, LMP_ADDR_MASTER, SLAVE_ID, MSG_SERVICE_LIST, 
+                            loraManager.getNextSeq(), &svcList, sizeof(PayloadServiceList)
+                        );
+
+                        if (list_len > 0) {
+                            loraManager.sendRaw((uint8_t*)&listFrame, list_len);
+                            Serial.println("-> [TX] Inviata SERVICE_LIST al Master.");
+                        }
                     }
                     break;
                 }
