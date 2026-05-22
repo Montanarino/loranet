@@ -17,7 +17,7 @@ private:
     LmpFrame _rx_frame;      
     uint16_t _rx_index;      
     uint32_t _err_count;     
-    uint16_t _tx_seq;        // Contatore di sequenza per l'invio (Da protocollo)
+    uint16_t _tx_seq = 0;        // Contatore di sequenza per l'invio (Da protocollo)
 
     bool processRxByte(uint8_t incoming_byte, LmpFrame *out_frame);
 

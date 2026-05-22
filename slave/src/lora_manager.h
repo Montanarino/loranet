@@ -17,7 +17,7 @@ private:
     LmpFrame    _rx_frame;      // Buffer temporaneo in ricezione
     uint16_t    _rx_index;      // Cursore di lettura
     uint32_t    _err_count;     // Contatore errori (CRC fallito o frame malformati)
-    uint16_t    _tx_seq;        // Contatore sequenziale per i frame in uscita
+    uint16_t    _tx_seq = 0;        // Contatore sequenziale per i frame in uscita
 
     // Metodo interno che elabora il flusso byte per byte
     bool processRxByte(uint8_t incoming_byte, LmpFrame *out_frame);
