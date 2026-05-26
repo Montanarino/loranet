@@ -66,6 +66,20 @@ bool SlaveRegistry::updateHeartbeat(uint8_t id, const PayloadHeartbeat* hb) {
     return true;
 }
 
+bool SlaveRegistry::updateServices(uint8_t node_id, PayloadServiceList* svcList) {
+    SlaveNode* node = getSlaveById(node_id);
+    if (node != nullptr) {
+        node->service_count = svcList->count;
+        
+        // Copiamo fisicamente la lista dei servizi nella memoria del Master
+        for (int i = 0; i < svcList->count; i++) {
+            node->services[i] = svcList->services[i];
+        }
+        return true;
+    }
+    return false;
+}
+
 SlaveNode* SlaveRegistry::getSlaveById(uint8_t id) {
     // Scansione lineare dell'array alla ricerca dell'ID corrispondente
     for (int i = 0; i < MAX_SLAVES; i++) {

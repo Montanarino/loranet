@@ -27,6 +27,9 @@ struct SlaveNode {
     
     // Stato di allocazione in memoria
     bool     is_allocated;      // true se questo slot dell'array è occupato da un nodo
+
+    uint8_t service_count;
+    ServiceEntry services[8];
 };
 
 class SlaveRegistry {
@@ -41,6 +44,8 @@ public:
 
     // Aggiorna lo stato di salute e il timeout di un nodo alla ricezione di MSG_HEARTBEAT
     bool updateHeartbeat(uint8_t id, const PayloadHeartbeat* hb);
+
+    bool updateServices(uint8_t node_id, PayloadServiceList* svcList);
 
     // Cerca un nodo specifico per ID. Ritorna nullptr se il nodo non è in rubrica.
     SlaveNode* getSlaveById(uint8_t id);

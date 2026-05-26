@@ -3,6 +3,8 @@
 #include "lora_manager.h"
 #include "services/service_registry.h" 
 #include "services/relay_service.h"
+#include "services/sensor_service.h"
+#define SENSOR_PIN 34
 
 #define SLAVE_ID       0x01      
 #define SLAVE_NAME     "Sensore_Serra" 
@@ -21,6 +23,8 @@ uint32_t last_heartbeat_time = 0;
 // Creiamo i nostri "Moduli" (Hardware)
 // ==========================================
 RelayService myRelay(SVC_CORE, "Led_Blu_Test", 1, RELAY_PIN);
+SensorService mySensor(SVC_SENSOR, "Sensore_Luce", 1, SENSOR_PIN);
+
 
 void sendAnnounce();
 void sendHeartbeat();
@@ -37,6 +41,7 @@ void setup() {
 
     // 1. Registriamo e accendiamo tutti i moduli HW!
     serviceRegistry.addService(&myRelay);
+    serviceRegistry.addService(&mySensor);
     serviceRegistry.initAll();
 
     sendAnnounce();
