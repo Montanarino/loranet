@@ -14,6 +14,7 @@ public:
     bool addService(Service* service);
     void initAll();
     void loopAll();
+    void notifyConfigChanged(uint8_t service_id);
     
     // Lo smistatore di pacchetti (dispatcher)
     void dispatchCmd(const LmpFrame* rxFrame, LoRaManager* lora, uint8_t slave_id);

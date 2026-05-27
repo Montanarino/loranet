@@ -21,7 +21,8 @@ public:
         // Il relè non ha operazioni continue da fare nel loop
     }
 
-    bool executeCmd(const PayloadCmd* cmd, PayloadAck* out_ack) override {
+    bool executeCmd(const PayloadCmd* cmd, PayloadAck* out_ack, PayloadCmdResult* out_result) override {
+        (void)out_result; // Non usato per il relay
         // Se il comando è 0x10 (il nostro comando di accensione inventato)
         if (cmd->cmd_id == 0x10) {
             uint8_t stato_richiesto = cmd->args[0];

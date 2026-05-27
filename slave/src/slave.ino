@@ -4,6 +4,10 @@
 #include "services/service_registry.h" 
 #include "services/relay_service.h"
 #include "services/sensor_service.h"
+#include "services/svc_http.h"
+#include "ota_receiver.h"
+#include <Preferences.h>
+
 #define SENSOR_PIN 34
 
 #define SLAVE_ID       0x01      
@@ -14,6 +18,9 @@
 #define RELAY_PIN      25     
 
 LoRaManager loraManager;
+OtaReceiver otaReceiver;
+HttpService myHttp(SVC_HTTP_SERVER, "Web_Admin", 1);
+Preferences preferences;
 bool is_registered = false;
 uint32_t last_announce_time = 0;
 uint8_t announce_retries = 0;
@@ -42,6 +49,7 @@ void setup() {
     // 1. Registriamo e accendiamo tutti i moduli HW!
     serviceRegistry.addService(&myRelay);
     serviceRegistry.addService(&mySensor);
+    serviceRegistry.addService(&myHttp);
     serviceRegistry.initAll();
 
     sendAnnounce();
@@ -52,10 +60,100 @@ void loop() {
     LmpFrame rxFrame;
 
     if (loraManager.poll(&rxFrame)) {
+        // --- LOGICA MESH FORWARDING ---
+        if (rxFrame.header.dst != SLAVE_ID && rxFrame.header.dst != LMP_ADDR_BROADCAST) {
+            // È un messaggio per qualcun altro. Possiamo fare da relay?
+            if (CAPABLE_RELAY && rxFrame.header.type != MSG_RELAY_FWD) {
+                Serial.printf("[MESH] Inoltro pacchetto da 0x%02X a 0x%02X...\n", rxFrame.header.src, rxFrame.header.dst);
+                
+                PayloadRelay relayPayload;
+                memset(&relayPayload, 0, sizeof(PayloadRelay));
+                relayPayload.original_src = rxFrame.header.src;
+                relayPayload.hop_count = 1; 
+                relayPayload.last_relay_id = SLAVE_ID;
+                relayPayload.original_type = rxFrame.header.type;
+                relayPayload.original_seq = rxFrame.header.seq;
+                relayPayload.original_len = rxFrame.header.len;
+                memcpy(relayPayload.original_payload, rxFrame.payload, rxFrame.header.len);
+
+                LmpFrame relayFrame;
+                uint16_t len = lmp_build_frame(&relayFrame, rxFrame.header.dst, SLAVE_ID, MSG_RELAY_FWD, loraManager.getNextSeq(), &relayPayload, sizeof(PayloadRelay));
+                loraManager.sendRaw((uint8_t*)&relayFrame, len);
+            }
+        }
+
         if (rxFrame.header.dst == SLAVE_ID || rxFrame.header.dst == LMP_ADDR_BROADCAST) {
             
+            // Se è un pacchetto wrappato RELAY_FWD, estraiamo l'originale
+            if (rxFrame.header.type == MSG_RELAY_FWD) {
+                PayloadRelay* relay = (PayloadRelay*)rxFrame.payload;
+                Serial.printf("[MESH] Ricevuto pacchetto inoltrato da 0x%02X (orig: 0x%02X)\n", rxFrame.header.src, relay->original_src);
+                rxFrame.header.src = relay->original_src;
+                rxFrame.header.type = relay->original_type;
+                rxFrame.header.seq = relay->original_seq;
+                rxFrame.header.len = relay->original_len;
+                memcpy(rxFrame.payload, relay->original_payload, relay->original_len);
+            }
+
             switch (rxFrame.header.type) {
                 
+                case MSG_CONFIG: {
+                    PayloadConfig* cfg = (PayloadConfig*)rxFrame.payload;
+                    Serial.printf("[CONFIG] Ricevuta configurazione per Svc: 0x%02X\n", cfg->service_id);
+                    
+                    preferences.begin("lmp_cfg", false);
+                    for (int i=0; i<cfg->param_count; i++) {
+                        String key = "s" + String(cfg->service_id) + "_" + String(cfg->params[i].key);
+                        preferences.putString(key.c_str(), cfg->params[i].value);
+                        Serial.printf("-> Salvato: %s = %s\n", key.c_str(), cfg->params[i].value);
+                    }
+                    preferences.end();
+
+                    // Notifichiamo il sistema che la configurazione è cambiata
+                    serviceRegistry.notifyConfigChanged(cfg->service_id);
+
+                    PayloadConfigAck ack;
+                    memset(&ack, 0, sizeof(PayloadConfigAck));
+                    ack.service_id = cfg->service_id;
+                    ack.status = 0;
+                    ack.applied = cfg->param_count;
+
+                    LmpFrame ackFrame;
+                    uint16_t len = lmp_build_frame(&ackFrame, rxFrame.header.src, SLAVE_ID, MSG_CONFIG_ACK, loraManager.getNextSeq(), &ack, sizeof(PayloadConfigAck));
+                    loraManager.sendRaw((uint8_t*)&ackFrame, len);
+                    break;
+                }
+                
+                case MSG_OTA_START: {
+                    PayloadOtaAck ack;
+                    otaReceiver.handleStart((PayloadOtaStart*)rxFrame.payload, &ack);
+                    
+                    LmpFrame ackFrame;
+                    uint16_t len = lmp_build_frame(&ackFrame, rxFrame.header.src, SLAVE_ID, MSG_OTA_ACK, loraManager.getNextSeq(), &ack, sizeof(PayloadOtaAck));
+                    loraManager.sendRaw((uint8_t*)&ackFrame, len);
+                    break;
+                }
+
+                case MSG_OTA_CHUNK: {
+                    PayloadOtaAck ack;
+                    otaReceiver.handleChunk((PayloadOtaChunk*)rxFrame.payload, &ack);
+                    
+                    LmpFrame ackFrame;
+                    uint16_t len = lmp_build_frame(&ackFrame, rxFrame.header.src, SLAVE_ID, MSG_OTA_ACK, loraManager.getNextSeq(), &ack, sizeof(PayloadOtaAck));
+                    loraManager.sendRaw((uint8_t*)&ackFrame, len);
+                    break;
+                }
+
+                case MSG_OTA_END: {
+                    PayloadOtaAck ack;
+                    otaReceiver.handleEnd((PayloadOtaEnd*)rxFrame.payload, &ack);
+                    
+                    LmpFrame ackFrame;
+                    uint16_t len = lmp_build_frame(&ackFrame, rxFrame.header.src, SLAVE_ID, MSG_OTA_ACK, loraManager.getNextSeq(), &ack, sizeof(PayloadOtaAck));
+                    loraManager.sendRaw((uint8_t*)&ackFrame, len);
+                    break;
+                }
+
                 case MSG_ACK: {
                     PayloadAck* ack = (PayloadAck*)rxFrame.payload;
                     if (!is_registered && ack->status == ACK_OK) {

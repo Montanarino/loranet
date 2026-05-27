@@ -23,7 +23,10 @@ public:
     // Metodi che ogni sensore dovrà implementare a modo suo
     virtual void init() = 0;
     virtual void loop() = 0;
+
+    // Notifica che la configurazione per questo servizio è stata aggiornata in NVS
+    virtual void onConfigChanged() {}
     
-    // Funzione che gestisce il comando e popola la risposta ACK
-    virtual bool executeCmd(const PayloadCmd* cmd, PayloadAck* out_ack) = 0;
+    // Funzione che gestisce il comando, popola l'ACK e opzionalmente il RISULTATO
+    virtual bool executeCmd(const PayloadCmd* cmd, PayloadAck* out_ack, PayloadCmdResult* out_result) = 0;
 };

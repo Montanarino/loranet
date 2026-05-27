@@ -171,6 +171,17 @@ typedef struct {
     char     message[16];     // Messaggio descrittivo opzionale (es. "crc mismatch")
 } PayloadOtaAck;
 
+// Payload: RELAY_FWD (0x20)
+typedef struct {
+    uint8_t  original_src;    // ID del mittente originario
+    uint8_t  hop_count;       // Salti rimanenti (TTL)
+    uint8_t  last_relay_id;   // ID dell'ultimo nodo che ha inoltrato
+    uint8_t  original_type;   // Tipo del messaggio originale (MsgType)
+    uint16_t original_seq;    // SEQ del messaggio originale
+    uint16_t original_len;    // Lunghezza del payload originale
+    uint8_t  original_payload[160]; // Il payload originale
+} PayloadRelay;
+
 // Payload: HEARTBEAT (0x30)
 typedef struct {
     uint32_t uptime_s;        // Secondi trascorsi dal boot dello Slave
